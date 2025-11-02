@@ -46,137 +46,154 @@ class InterviewNotifyGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"Interview Notify Advanced v{VERSION}")
-        self.root.geometry("800x700")
-        self.root.resizable(True, True)
+        self.root.geometry("900x750")
+        self.root.minsize(800, 600)
 
         self.process = None
         self.log_queue = queue.Queue()
         self.log_dirs = []
 
         self.create_widgets()
-        self.load_config()
+
+        # Load config after widgets are created and rendered
+        self.root.after(100, self.load_config)
 
     def create_widgets(self):
         # Main container with padding
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-        # Configure grid weights
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
+        main_frame = ttk.Frame(self.root, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
         # === Configuration Section ===
         config_frame = ttk.LabelFrame(main_frame, text="Configuration", padding="10")
-        config_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N), pady=5)
-        config_frame.columnconfigure(1, weight=1)
+        config_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # Topic
-        ttk.Label(config_frame, text="ntfy Topic:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        # Topic and Server row
+        row1 = ttk.Frame(config_frame)
+        row1.pack(fill=tk.X, pady=5)
+
+        ttk.Label(row1, text="ntfy Topic:", width=15).pack(side=tk.LEFT)
         self.topic_var = tk.StringVar()
-        ttk.Entry(config_frame, textvariable=self.topic_var, width=40).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2, padx=5)
+        ttk.Entry(row1, textvariable=self.topic_var, width=25).pack(side=tk.LEFT, padx=5)
 
-        # Server
-        ttk.Label(config_frame, text="ntfy Server:").grid(row=0, column=2, sticky=tk.W, pady=2, padx=(10, 0))
+        ttk.Label(row1, text="Server:", width=10).pack(side=tk.LEFT, padx=(15, 0))
         self.server_var = tk.StringVar(value="https://ntfy.sh/")
-        ttk.Entry(config_frame, textvariable=self.server_var, width=30).grid(row=0, column=3, sticky=(tk.W, tk.E), pady=2, padx=5)
+        ttk.Entry(row1, textvariable=self.server_var, width=25).pack(side=tk.LEFT, padx=5)
 
-        # Nick
-        ttk.Label(config_frame, text="Your Nick:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        # Nick and Bot Nicks row
+        row2 = ttk.Frame(config_frame)
+        row2.pack(fill=tk.X, pady=5)
+
+        ttk.Label(row2, text="Your Nick:", width=15).pack(side=tk.LEFT)
         self.nick_var = tk.StringVar()
-        ttk.Entry(config_frame, textvariable=self.nick_var, width=40).grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2, padx=5)
+        ttk.Entry(row2, textvariable=self.nick_var, width=25).pack(side=tk.LEFT, padx=5)
 
-        # Bot Nicks
-        ttk.Label(config_frame, text="Bot Nicks:").grid(row=1, column=2, sticky=tk.W, pady=2, padx=(10, 0))
+        ttk.Label(row2, text="Bot Nicks:", width=10).pack(side=tk.LEFT, padx=(15, 0))
         self.bot_nicks_var = tk.StringVar(value="Gatekeeper")
-        ttk.Entry(config_frame, textvariable=self.bot_nicks_var, width=30).grid(row=1, column=3, sticky=(tk.W, tk.E), pady=2, padx=5)
+        ttk.Entry(row2, textvariable=self.bot_nicks_var, width=25).pack(side=tk.LEFT, padx=5)
 
-        # Mode
-        ttk.Label(config_frame, text="Mode:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        # Mode and Rate Limit row
+        row3 = ttk.Frame(config_frame)
+        row3.pack(fill=tk.X, pady=5)
+
+        ttk.Label(row3, text="Mode:", width=15).pack(side=tk.LEFT)
         self.mode_var = tk.StringVar(value="red")
-        mode_combo = ttk.Combobox(config_frame, textvariable=self.mode_var, values=["red", "ops"], state="readonly", width=10)
-        mode_combo.grid(row=2, column=1, sticky=tk.W, pady=2, padx=5)
+        mode_combo = ttk.Combobox(row3, textvariable=self.mode_var, values=["red", "ops"],
+                                  state="readonly", width=22)
+        mode_combo.pack(side=tk.LEFT, padx=5)
 
-        # Rate Limit
-        ttk.Label(config_frame, text="Rate Limit (sec):").grid(row=2, column=2, sticky=tk.W, pady=2, padx=(10, 0))
+        ttk.Label(row3, text="Rate Limit (sec):", width=15).pack(side=tk.LEFT, padx=(15, 0))
         self.rate_limit_var = tk.StringVar(value="60")
-        ttk.Entry(config_frame, textvariable=self.rate_limit_var, width=10).grid(row=2, column=3, sticky=tk.W, pady=2, padx=5)
+        ttk.Entry(row3, textvariable=self.rate_limit_var, width=22).pack(side=tk.LEFT, padx=5)
 
         # Log Directories
-        ttk.Label(config_frame, text="Log Directories:").grid(row=3, column=0, sticky=(tk.W, tk.N), pady=2)
+        log_dir_label = ttk.Label(config_frame, text="IRC Log Directories:")
+        log_dir_label.pack(anchor=tk.W, pady=(10, 5))
 
-        log_dir_frame = ttk.Frame(config_frame)
-        log_dir_frame.grid(row=3, column=1, columnspan=3, sticky=(tk.W, tk.E), pady=2, padx=5)
-        log_dir_frame.columnconfigure(0, weight=1)
+        log_dir_container = ttk.Frame(config_frame)
+        log_dir_container.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
-        self.log_dir_listbox = tk.Listbox(log_dir_frame, height=3)
-        self.log_dir_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.log_dir_listbox = tk.Listbox(log_dir_container, height=4)
+        self.log_dir_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        log_dir_scrollbar = ttk.Scrollbar(log_dir_frame, orient=tk.VERTICAL, command=self.log_dir_listbox.yview)
-        log_dir_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        log_dir_scrollbar = ttk.Scrollbar(log_dir_container, orient=tk.VERTICAL,
+                                         command=self.log_dir_listbox.yview)
+        log_dir_scrollbar.pack(side=tk.LEFT, fill=tk.Y)
         self.log_dir_listbox.configure(yscrollcommand=log_dir_scrollbar.set)
 
-        log_dir_buttons = ttk.Frame(log_dir_frame)
-        log_dir_buttons.grid(row=0, column=2, sticky=(tk.N), padx=5)
-        ttk.Button(log_dir_buttons, text="Add", command=self.add_log_dir, width=8).pack(pady=2)
-        ttk.Button(log_dir_buttons, text="Remove", command=self.remove_log_dir, width=8).pack(pady=2)
+        log_dir_btn_frame = ttk.Frame(log_dir_container)
+        log_dir_btn_frame.pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Button(log_dir_btn_frame, text="Add Directory",
+                  command=self.add_log_dir).pack(pady=2, fill=tk.X)
+        ttk.Button(log_dir_btn_frame, text="Remove",
+                  command=self.remove_log_dir).pack(pady=2, fill=tk.X)
 
         # Options
         options_frame = ttk.Frame(config_frame)
-        options_frame.grid(row=4, column=0, columnspan=4, sticky=tk.W, pady=5)
+        options_frame.pack(fill=tk.X, pady=(10, 0))
 
         self.check_bot_nicks_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="Check bot nicks", variable=self.check_bot_nicks_var).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(options_frame, text="Check bot nicks",
+                       variable=self.check_bot_nicks_var).pack(side=tk.LEFT, padx=5)
 
         self.enable_notif_log_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(options_frame, text="Enable notification log", variable=self.enable_notif_log_var,
+        ttk.Checkbutton(options_frame, text="Enable notification log",
+                       variable=self.enable_notif_log_var,
                        command=self.toggle_notif_log).pack(side=tk.LEFT, padx=5)
 
         self.notif_log_var = tk.StringVar()
-        self.notif_log_entry = ttk.Entry(options_frame, textvariable=self.notif_log_var, width=30, state=tk.DISABLED)
+        self.notif_log_entry = ttk.Entry(options_frame, textvariable=self.notif_log_var,
+                                         width=30, state=tk.DISABLED)
         self.notif_log_entry.pack(side=tk.LEFT, padx=5)
 
-        self.notif_log_button = ttk.Button(options_frame, text="Browse", command=self.browse_notif_log, state=tk.DISABLED)
+        self.notif_log_button = ttk.Button(options_frame, text="Browse",
+                                          command=self.browse_notif_log, state=tk.DISABLED)
         self.notif_log_button.pack(side=tk.LEFT)
 
         # === Control Section ===
         control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=10)
+        control_frame.pack(fill=tk.X, pady=10)
 
-        self.start_button = ttk.Button(control_frame, text="Start Monitoring", command=self.start_monitoring, width=20)
+        self.start_button = ttk.Button(control_frame, text="▶ Start Monitoring",
+                                      command=self.start_monitoring)
         self.start_button.pack(side=tk.LEFT, padx=5)
 
-        self.stop_button = ttk.Button(control_frame, text="Stop", command=self.stop_monitoring, state=tk.DISABLED, width=15)
+        self.stop_button = ttk.Button(control_frame, text="⬛ Stop",
+                                     command=self.stop_monitoring, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(control_frame, text="Save Config", command=self.save_config, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Load Config", command=self.load_config, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="💾 Save Config",
+                  command=self.save_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="📂 Load Config",
+                  command=self.load_config).pack(side=tk.LEFT, padx=5)
 
         # Status
-        status_frame = ttk.Frame(control_frame)
-        status_frame.pack(side=tk.LEFT, padx=20)
-
-        ttk.Label(status_frame, text="Status:").pack(side=tk.LEFT)
-        self.status_label = ttk.Label(status_frame, text="● Stopped", foreground="red")
-        self.status_label.pack(side=tk.LEFT, padx=5)
+        ttk.Label(control_frame, text="Status:").pack(side=tk.LEFT, padx=(20, 5))
+        self.status_label = ttk.Label(control_frame, text="⬤ Stopped", foreground="red")
+        self.status_label.pack(side=tk.LEFT)
 
         # === Log Viewer Section ===
         log_frame = ttk.LabelFrame(main_frame, text="Live Logs", padding="5")
-        log_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
-        log_frame.columnconfigure(0, weight=1)
-        log_frame.rowconfigure(0, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=15, wrap=tk.WORD, state=tk.DISABLED)
-        self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=15, wrap=tk.WORD,
+                                                  state=tk.DISABLED, font=("Monaco", 10))
+        self.log_text.pack(fill=tk.BOTH, expand=True)
 
         log_buttons = ttk.Frame(log_frame)
-        log_buttons.grid(row=1, column=0, sticky=tk.W, pady=5)
+        log_buttons.pack(fill=tk.X, pady=(5, 0))
 
         ttk.Button(log_buttons, text="Clear Logs", command=self.clear_logs).pack(side=tk.LEFT, padx=5)
 
         self.auto_scroll_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(log_buttons, text="Auto-scroll", variable=self.auto_scroll_var).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(log_buttons, text="Auto-scroll",
+                       variable=self.auto_scroll_var).pack(side=tk.LEFT, padx=5)
+
+        # Add initial welcome message
+        self.log_message("=" * 60)
+        self.log_message(f"Interview Notify Advanced v{VERSION} - GUI")
+        self.log_message("=" * 60)
+        self.log_message("Configure settings above and click 'Start Monitoring'")
+        self.log_message("")
 
         # Start log update timer
         self.update_logs()
