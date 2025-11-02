@@ -2,13 +2,19 @@
 
 import argparse, sys, threading, logging, re, requests
 from pathlib import Path
-from time import sleep
+from time import sleep, time
+from datetime import datetime
 from file_read_backwards import FileReadBackwards
 from hashlib import sha256
 from urllib.parse import urljoin
 
-VERSION = '1.2.10'
+VERSION = '1.3.0'
 default_server = 'https://ntfy.sh/'
+
+# Rate limiting and notification history
+notification_lock = threading.Lock()
+recent_notifications = {}  # {notification_type: timestamp}
+notification_log_file = None
 
 parser = argparse.ArgumentParser(prog='interview_notify.py',
   description='IRC Interview Notifier v{}\nhttps://github.com/ftc2/interview-notify'.format(VERSION),
@@ -22,24 +28,26 @@ On mobile, I suggest enabling the 'Instant delivery' feature as well as 'Keep al
   formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument('--topic', required=True, help='ntfy topic name to POST notifications to')
 parser.add_argument('--server', default=default_server, help='ntfy server to POST notifications to – default: {}'.format(default_server))
-parser.add_argument('--log-dir', required=True, dest='path', type=Path, help='path to IRC logs (continuously checks for newest file to parse)')
+parser.add_argument('--log-dir', required=True, dest='paths', type=Path, action='append', help='path to IRC logs (can be specified multiple times for multi-channel support)')
 parser.add_argument('--nick', required=True, help='your IRC nick')
 parser.add_argument('--check-bot-nicks', default=True, action=argparse.BooleanOptionalAction, help="attempt to parse bot's nick. disable if your log files are not like '<nick> message' – default: enabled")
 parser.add_argument('--bot-nicks', metavar='NICKS', default='Gatekeeper', help='comma-separated list of bot nicks to watch – default: Gatekeeper')
 parser.add_argument('--mode', choices=['red', 'ops'], default='red', help='interview mode (affects triggers) – default: red')
+parser.add_argument('--notification-log', dest='notif_log', type=Path, help='path to file for logging all notifications (optional)')
+parser.add_argument('--rate-limit', dest='rate_limit', type=int, default=60, help='seconds to wait before sending duplicate notifications – default: 60')
 parser.add_argument('-v', action='count', default=5, dest='verbose', help='verbose (invoke multiple times for more verbosity)')
 parser.add_argument('--version', action='version', version='{} v{}'.format(parser.prog, VERSION))
 
-def log_scan():
+def log_scan(log_path):
   """Poll dir for most recently modified log file and spawn a parser thread for the log"""
-  logging.info('scanner: watching logs in "{}"'.format(args.path))
-  curr = find_latest_log()
+  logging.info('scanner: watching logs in "{}"'.format(log_path))
+  curr = find_latest_log(log_path)
   logging.debug('scanner: current log: "{}"'.format(curr.name))
   parser, parser_stop = spawn_parser(curr)
   parser.start()
   while True:
     sleep(0.5) # polling delay for checking for newer logfile
-    latest = find_latest_log()
+    latest = find_latest_log(log_path)
     if curr != latest:
       curr = latest
       logging.info('scanner: newer log found: "{}"'.format(curr.name))
@@ -48,11 +56,11 @@ def log_scan():
       parser, parser_stop = spawn_parser(curr)
       parser.start()
 
-def find_latest_log():
+def find_latest_log(log_path):
   """Find latest log file"""
-  files = [f for f in args.path.iterdir() if f.is_file() and f.name not in ['.DS_Store', 'thumbs.db']]
+  files = [f for f in log_path.iterdir() if f.is_file() and f.name not in ['.DS_Store', 'thumbs.db']]
   if len(files) == 0:
-    crit_quit('no log files found')
+    crit_quit('no log files found in "{}"'.format(log_path))
   return max(files, key=lambda f: f.stat().st_mtime)
 
 def spawn_parser(log_path):
@@ -69,22 +77,22 @@ def log_parse(log_path, parser_stop):
     logging.debug(line)
     if check_trigger(line, 'Currently interviewing: {}'.format(args.nick)):
       logging.info('YOUR INTERVIEW IS HAPPENING ❗')
-      notify(line, title='Your interview is happening❗', tags='rotating_light', priority=5)
+      notify(line, title='Your interview is happening❗', tags='rotating_light', priority=5, notification_type='your_interview')
     elif check_trigger(line, 'Currently interviewing:'):
       logging.info('interview detected ⚠️')
-      notify(line, title='Interview detected', tags='warning')
+      notify(line, title='Interview detected', tags='warning', notification_type='interview')
     elif check_trigger(line, '{}:'.format(args.nick), disregard_bot_nicks=True):
       logging.info('mention detected ⚠️')
-      notify(line, title="You've been mentioned", tags='wave')
+      notify(line, title="You've been mentioned", tags='wave', notification_type='mention')
     elif 'Disconnected' in line:
       logging.info('IRC disconnect detected ⚠️')
-      notify(line, title="You've been disconnected from IRC!", tags='x', priority=5)
+      notify(line, title="You've been disconnected from IRC!", tags='x', priority=5, notification_type='disconnect')
     elif check_netsplit(line):
       logging.info('netsplit detected ⚠️')
-      notify(line, title="Netsplit detected – requeue within 10min!", tags='electric_plug', priority=5)
+      notify(line, title="Netsplit detected – requeue within 10min!", tags='electric_plug', priority=5, notification_type='netsplit')
     elif check_words(line, triggers=['kick'], check_nick=True):
       logging.info('kick detected ⚠️')
-      notify(line, title="You've been kicked – rejoin & requeue ASAP!", tags='anger', priority=5)
+      notify(line, title="You've been kicked – rejoin & requeue ASAP!", tags='anger', priority=5, notification_type='kick')
 
 def tail(path, parser_stop):
   """Poll file and yield lines as they appear"""
@@ -143,16 +151,64 @@ def bot_nick_prefix(trigger):
   nicks = args.bot_nicks.split(',')
   return ['{}> {}'.format(nick, trigger) for nick in nicks]
 
-def notify(data, topic=None, server=None, **kwargs):
-  """Send notification via ntfy"""
+def notify(data, topic=None, server=None, notification_type=None, **kwargs):
+  """Send notification via ntfy with rate limiting and logging"""
   if topic is None: topic=args.topic
   if server is None: server=args.server
+
+  # Rate limiting check
+  if notification_type and should_rate_limit(notification_type):
+    logging.debug('rate-limited notification type: {}'.format(notification_type))
+    return
+
+  # Send notification
   if server[-1] != '/': server += '/'
   target = urljoin(server, topic, allow_fragments=False)
+  # Remove notification_type from kwargs as it's not a valid ntfy header
   headers = {k.capitalize():str(v).encode('utf-8') for (k,v) in kwargs.items()}
   requests.post(target,
                 data=data.encode(encoding='utf-8'),
                 headers=headers)
+
+  # Log notification if enabled
+  log_notification(notification_type, kwargs.get('title', 'Notification'), data, kwargs.get('priority', 3))
+
+def should_rate_limit(notification_type):
+  """Check if notification should be rate limited"""
+  with notification_lock:
+    current_time = time()
+
+    # Always send critical notifications (your interview, disconnect, kick)
+    if notification_type in ['your_interview', 'disconnect', 'kick']:
+      recent_notifications[notification_type] = current_time
+      return False
+
+    # Check if we've sent this notification type recently
+    if notification_type in recent_notifications:
+      time_since_last = current_time - recent_notifications[notification_type]
+      if time_since_last < args.rate_limit:
+        return True  # Rate limit this notification
+
+    # Update the timestamp for this notification type
+    recent_notifications[notification_type] = current_time
+    return False
+
+def log_notification(notification_type, title, message, priority):
+  """Log notification to file if enabled"""
+  if not args.notif_log:
+    return
+
+  try:
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_entry = '[{}] type={} priority={} title={}\n  message: {}\n'.format(
+      timestamp, notification_type or 'unknown', priority, title, message.strip()
+    )
+
+    with notification_lock:
+      with open(args.notif_log, 'a', encoding='utf-8') as f:
+        f.write(log_entry)
+  except Exception as e:
+    logging.error('failed to write notification log: {}'.format(e))
 
 def anon_telemetry():
   """Send anonymous telemetry
@@ -183,12 +239,19 @@ logging.basicConfig(level=args.verbose, format='%(asctime)s %(levelname)s: %(mes
 if args.mode != 'red':
   crit_quit('"{}" mode not implemented'.format(args.mode))
 
-if args.path.is_file():
-  crit_quit('log path invalid: dir expected, got file')
-elif not args.path.is_dir():
-  crit_quit('log path invalid')
+# Validate all log paths
+for path in args.paths:
+  if path.is_file():
+    crit_quit('log path invalid: dir expected, got file – "{}"'.format(path))
+  elif not path.is_dir():
+    crit_quit('log path invalid – "{}"'.format(path))
 
-scanner = threading.Thread(target=log_scan)
-scanner.start()
+# Start scanner thread for each log directory (multi-channel support)
+scanners = []
+for path in args.paths:
+  scanner = threading.Thread(target=log_scan, args=(path,))
+  scanner.start()
+  scanners.append(scanner)
+  logging.info('started scanner for "{}"'.format(path))
 
 anon_telemetry()
