@@ -15,7 +15,7 @@ it sends push notifications when:
 - you lose your spot in the queue due to a netsplit
 - you get kicked
 
-**new in v1.3.0:**
+**new in v1.4.0:**
 - **rate limiting** – prevents notification spam during mass events like netsplits (configurable with `--rate-limit`)
 - **notification history** – logs all notifications to a file for review (enable with `--notification-log`)
 - **multi-channel support** – watch multiple IRC channels simultaneously (specify `--log-dir` multiple times)
@@ -38,7 +38,7 @@ pretty self explanatory if you read the help:
 
 usage: interview_notify.py [-h] --topic TOPIC [--server SERVER] --log-dir PATH --nick NICK [--check-bot-nicks | --no-check-bot-nicks] [--bot-nicks NICKS] [--mode {red,orp}] [-v] [--version]
 
-IRC Interview Notifier v1.3.0
+IRC Interview Notifier v1.4.0
 https://github.com/ftc2/interview-notify
 
 options:

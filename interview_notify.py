@@ -8,7 +8,7 @@ from file_read_backwards import FileReadBackwards
 from hashlib import sha256
 from urllib.parse import urljoin
 
-VERSION = '1.3.0'
+VERSION = '1.4.0'
 default_server = 'https://ntfy.sh/'
 
 # Rate limiting and notification history
