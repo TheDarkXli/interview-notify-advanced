@@ -16,6 +16,7 @@ it sends push notifications when:
 - you get kicked
 
 **new in v1.4.0:**
+- **GUI application** – optional graphical interface for easy configuration (use `python3 interview_notify_gui.py`)
 - **rate limiting** – prevents notification spam during mass events like netsplits (configurable with `--rate-limit`)
 - **notification history** – logs all notifications to a file for review (enable with `--notification-log`)
 - **multi-channel support** – watch multiple IRC channels simultaneously (specify `--log-dir` multiple times)
@@ -30,6 +31,25 @@ it sends push notifications when:
 - `python3 interview_notify.py`
 
 ## using
+
+### GUI (recommended for beginners)
+
+for a user-friendly graphical interface:
+
+```bash
+python3 interview_notify_gui.py
+```
+
+the GUI provides:
+- easy configuration with forms instead of command-line arguments
+- start/stop monitoring with buttons
+- live log viewer
+- save/load configuration
+- multi-channel support with add/remove buttons
+
+### command line
+
+for advanced users and automation, use the CLI:
 
 pretty self explanatory if you read the help:
 

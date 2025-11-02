@@ -1,4 +1,8 @@
 .DS_Store
+
+# interview-notify config files
+.interview-notify-config.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
