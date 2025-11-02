@@ -58,7 +58,7 @@ python3 --version
 ## using
 
 ### GUI (recommended for beginners)
-<img src="https://imgur.com/NeeANqE">
+<img src="https://i.imgur.com/NeeANqE.png">
 
 for a user-friendly graphical interface:
 
