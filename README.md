@@ -32,12 +32,27 @@ it sends push notifications when:
 
 ### for GUI users
 
-if you want to use the GUI, you need tkinter:
+**IMPORTANT:** The GUI requires tkinter. You must install the version that matches your Python installation.
 
-- **macOS (Homebrew Python)**: `brew install python-tk@3.13` (or your Python version)
+**Step 1:** Check your Python version:
+```bash
+python3 --version
+```
+
+**Step 2:** Install the matching python-tk package:
+
+- **macOS (Homebrew Python)**:
+  - For Python 3.13: `brew install python-tk@3.13`
+  - For Python 3.14: `brew install python-tk@3.14`
+  - Match the version to what you saw in Step 1!
+
 - **macOS (alternative)**: use system Python `/usr/bin/python3 interview_notify_gui.py`
+  - Note: You may see a deprecation warning, but it will work
+
 - **Linux (Debian/Ubuntu)**: `sudo apt-get install python3-tk`
+
 - **Linux (Fedora/RHEL)**: `sudo dnf install python3-tkinter`
+
 - **Windows**: tkinter is usually included, if not reinstall Python with tcl/tk option
 
 ## using
