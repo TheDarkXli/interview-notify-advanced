@@ -5,8 +5,32 @@ GUI wrapper for interview-notify-advanced
 Provides a user-friendly interface for configuring and running the notifier
 """
 
-import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox
+try:
+    import tkinter as tk
+    from tkinter import ttk, scrolledtext, filedialog, messagebox
+except ImportError as e:
+    print("ERROR: tkinter is not available on your system.")
+    print()
+    print("To fix this:")
+    print()
+    print("  macOS (Homebrew Python):")
+    print("    brew install python-tk@3.13  # or your Python version")
+    print()
+    print("  macOS (use system Python instead):")
+    print("    /usr/bin/python3 interview_notify_gui.py")
+    print()
+    print("  Linux (Debian/Ubuntu):")
+    print("    sudo apt-get install python3-tk")
+    print()
+    print("  Linux (Fedora/RHEL):")
+    print("    sudo dnf install python3-tkinter")
+    print()
+    print("  Windows:")
+    print("    Tkinter should be included - reinstall Python and check 'tcl/tk' option")
+    print()
+    import sys
+    sys.exit(1)
+
 import subprocess
 import threading
 import json

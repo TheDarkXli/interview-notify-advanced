@@ -30,6 +30,16 @@ it sends push notifications when:
   - `git clone https://github.com/ftc2/interview-notify.git`
 - `python3 interview_notify.py`
 
+### for GUI users
+
+if you want to use the GUI, you need tkinter:
+
+- **macOS (Homebrew Python)**: `brew install python-tk@3.13` (or your Python version)
+- **macOS (alternative)**: use system Python `/usr/bin/python3 interview_notify_gui.py`
+- **Linux (Debian/Ubuntu)**: `sudo apt-get install python3-tk`
+- **Linux (Fedora/RHEL)**: `sudo dnf install python3-tkinter`
+- **Windows**: tkinter is usually included, if not reinstall Python with tcl/tk option
+
 ## using
 
 ### GUI (recommended for beginners)
