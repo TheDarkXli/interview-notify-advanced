@@ -11,8 +11,14 @@ it sends push notifications when:
 - interviews are happening
 - YOUR interview is happening!
 - someone mentions you
+- you get disconnected from IRC
 - you lose your spot in the queue due to a netsplit
 - you get kicked
+
+**new in v1.3.0:**
+- **rate limiting** – prevents notification spam during mass events like netsplits (configurable with `--rate-limit`)
+- **notification history** – logs all notifications to a file for review (enable with `--notification-log`)
+- **multi-channel support** – watch multiple IRC channels simultaneously (specify `--log-dir` multiple times)
 
 ## installing
 
@@ -32,7 +38,7 @@ pretty self explanatory if you read the help:
 
 usage: interview_notify.py [-h] --topic TOPIC [--server SERVER] --log-dir PATH --nick NICK [--check-bot-nicks | --no-check-bot-nicks] [--bot-nicks NICKS] [--mode {red,orp}] [-v] [--version]
 
-IRC Interview Notifier v1.2.10
+IRC Interview Notifier v1.3.0
 https://github.com/ftc2/interview-notify
 
 options:
@@ -72,3 +78,35 @@ then type `Currently interviewing: your_nick` in IRC.
 if it doesn't work, maybe you have a wonky log file format. try with `--no-check-bot-nicks`:
 
 `interview_notify.py --topic your_topic --log-dir /path/to/logs --nick your_nick --no-check-bot-nicks -v`
+
+## advanced features
+
+### multi-channel support
+
+watch multiple IRC channels simultaneously by specifying `--log-dir` multiple times:
+
+```bash
+interview_notify.py --topic your_topic \
+  --log-dir /path/to/red/logs \
+  --log-dir /path/to/ops/logs \
+  --nick your_nick
+```
+
+### notification history
+
+log all notifications to a file for review:
+
+```bash
+interview_notify.py --topic your_topic --log-dir /path/to/logs --nick your_nick \
+  --notification-log ~/interview-notifications.log
+```
+
+### rate limiting
+
+prevent notification spam during mass events (like netsplits). default is 60 seconds. critical notifications (your interview, disconnect, kick) are never rate-limited:
+
+```bash
+# set rate limit to 120 seconds
+interview_notify.py --topic your_topic --log-dir /path/to/logs --nick your_nick \
+  --rate-limit 120
+```
