@@ -21,14 +21,24 @@ def format_timestamp(ts_str):
 
 def print_statistics(db_path=None, days=30, channel=None):
     """Print interview statistics"""
-    db = InterviewDatabase(db_path)
+    try:
+        db = InterviewDatabase(db_path)
+    except Exception as e:
+        print(f"Error opening database: {e}")
+        return
 
     print("=" * 70)
     print(f"Interview Statistics (Last {days} days)")
+    if channel:
+        print(f"Channel: {channel}")
     print("=" * 70)
     print()
 
-    stats = db.get_statistics(days=days, channel=channel)
+    try:
+        stats = db.get_statistics(days=days, channel=channel)
+    except Exception as e:
+        print(f"Error retrieving statistics: {e}")
+        return
 
     print(f"📊 Total Interviews:     {stats['total_interviews']}")
     print(f"✅ Passed:               {stats['passed']} ({stats['pass_rate']}%)")
@@ -47,21 +57,24 @@ def print_statistics(db_path=None, days=30, channel=None):
     print("Recent Interviews:")
     print("-" * 70)
 
-    recent = db.get_recent_interviews(limit=15, channel=channel)
-    if recent:
-        for event in recent:
-            timestamp = format_timestamp(event['timestamp'])
-            username = event['username']
-            event_type = event['event_type']
+    try:
+        recent = db.get_recent_interviews(limit=15, channel=channel)
+        if recent:
+            for event in recent:
+                timestamp = format_timestamp(event['timestamp'])
+                username = event['username']
+                event_type = event['event_type']
 
-            if event_type == 'started':
-                queue = event.get('queue_length', '?')
-                print(f"[{timestamp}] {username:20s} → Started (queue: {queue})")
-            elif event_type in ['passed', 'failed', 'missed']:
-                emoji = {'passed': '✅', 'failed': '❌', 'missed': '⏰'}[event_type]
-                print(f"[{timestamp}] {username:20s} → {emoji} {event_type.upper()}")
-    else:
-        print("No recent interviews found")
+                if event_type == 'started':
+                    queue = event.get('queue_length', '?')
+                    print(f"[{timestamp}] {username:20s} → Started (queue: {queue})")
+                elif event_type in ['passed', 'failed', 'missed']:
+                    emoji = {'passed': '✅', 'failed': '❌', 'missed': '⏰'}[event_type]
+                    print(f"[{timestamp}] {username:20s} → {emoji} {event_type.upper()}")
+        else:
+            print("No recent interviews found")
+    except Exception as e:
+        print(f"Error retrieving recent interviews: {e}")
 
     print()
     print("=" * 70)

@@ -83,7 +83,16 @@ def spawn_parser(log_path):
 def log_parse(log_path, parser_stop):
   """Parse log file and notify on triggers (parser thread)"""
   logging.info('parser: using "{}"'.format(log_path.name))
-  channel = log_path.parent.name  # Use parent directory as channel identifier
+
+  # Extract channel name more robustly
+  # Try to get from parent directory name, fall back to log file name
+  try:
+    channel = log_path.parent.name
+    # If parent is just a generic name, try the log file name
+    if not channel or channel in ['.', '..', 'logs', 'Channels']:
+      channel = log_path.stem  # File name without extension
+  except:
+    channel = 'unknown'
 
   for line in tail(log_path, parser_stop):
     logging.debug(line)
@@ -152,6 +161,7 @@ def check_words(line, triggers, check_nick=False):
   """Check if a trigger & a bot nick & (optionally) user nick all appear in a string"""
   for trigger in triggers:
     for bot in args.bot_nicks.split(','):
+      bot = bot.strip()  # Remove whitespace from bot nicks
       if check_nick:
         if args.nick in line and bot in line and trigger.lower() in line.lower():
           return True
@@ -175,32 +185,45 @@ def check_netsplit(line):
 def parse_interview_start(line):
   """Parse interview start message and return (username, queue_length) or None"""
   # Pattern: <Gatekeeper> Currently interviewing: USERNAME ::: #red-interview-01 ::: 59 remaining in queue.
-  match = re.search(r'Currently interviewing:\s+(\S+)\s+:::.+?:::\s+(\d+)\s+remaining in queue', line)
+  # More robust: handle usernames with special chars, optional whitespace
+  match = re.search(r'Currently interviewing:\s+([^\s:]+)\s+:::.*?:::\s+(\d+)\s+remaining in queue', line, re.IGNORECASE)
   if match:
-    username = match.group(1)
-    queue_length = int(match.group(2))
-    return (username, queue_length)
+    try:
+      username = match.group(1).strip()
+      queue_length = int(match.group(2))
+      return (username, queue_length)
+    except (ValueError, AttributeError) as e:
+      logging.debug(f"Failed to parse interview start: {e}")
+      return None
   return None
 
 def parse_interview_outcome(line):
   """Parse interview outcome (kick message) and return (username, outcome, message) or None"""
   # Check if it's a kick message from Gatekeeper
-  kick_match = re.search(r'Gatekeeper kicked\s+(\S+)\s+from the channel\s+\((.+?)\)', line)
+  # More robust: handle various kick message formats
+  kick_match = re.search(r'Gatekeeper kicked\s+([^\s]+)\s+from the channel\s*\((.+?)\)\s*$', line)
   if not kick_match:
     return None
 
-  username = kick_match.group(1)
-  message = kick_match.group(2)
+  try:
+    username = kick_match.group(1).strip()
+    message = kick_match.group(2).strip()
 
-  # Determine outcome based on message content
-  if 'Congratulations! Welcome to' in message:
-    return (username, 'passed', message)
-  elif 'You have not passed the interview' in message:
-    return (username, 'failed', message)
-  elif 'You missed your interview' in message:
-    return (username, 'missed', message)
+    # Determine outcome based on message content (case insensitive)
+    message_lower = message.lower()
+    if 'congratulations' in message_lower and 'welcome to' in message_lower:
+      return (username, 'passed', message)
+    elif 'not passed the interview' in message_lower or 'you have not passed' in message_lower:
+      return (username, 'failed', message)
+    elif 'missed your interview' in message_lower:
+      return (username, 'missed', message)
 
-  return None
+    # Unknown kick reason - log it
+    logging.debug(f"Unknown kick reason for {username}: {message}")
+    return None
+  except (AttributeError, IndexError) as e:
+    logging.debug(f"Failed to parse kick message: {e}")
+    return None
 
 def remove_html_tags(text):
   """Remove html tags from a string"""
@@ -209,7 +232,7 @@ def remove_html_tags(text):
 
 def bot_nick_prefix(trigger):
   """Prefix a trigger with bot nick(s) to reduce false positives"""
-  nicks = args.bot_nicks.split(',')
+  nicks = [nick.strip() for nick in args.bot_nicks.split(',')]
   return ['{}> {}'.format(nick, trigger) for nick in nicks]
 
 def notify(data, topic=None, server=None, notification_type=None, **kwargs):
