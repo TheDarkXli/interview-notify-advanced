@@ -20,14 +20,22 @@ class InterviewDatabase:
         else:
             db_path = Path(db_path)
 
+        # Ensure parent directory exists
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
         self.db_path = db_path
         self.init_database()
 
     @contextmanager
     def get_connection(self):
         """Context manager for database connections"""
-        conn = sqlite3.connect(self.db_path)
+        # Enable WAL mode for better concurrent access and set timeout
+        conn = sqlite3.connect(self.db_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
+
+        # Enable Write-Ahead Logging for better concurrency
+        conn.execute('PRAGMA journal_mode=WAL')
+
         try:
             yield conn
             conn.commit()
@@ -84,34 +92,57 @@ class InterviewDatabase:
 
     def record_interview_start(self, username, queue_length=None, channel=None):
         """Record when an interview starts"""
+        # Validate inputs
+        if not username or not isinstance(username, str):
+            logging.warning(f"Invalid username: {username}")
+            return
+
+        if queue_length is not None and (not isinstance(queue_length, int) or queue_length < 0):
+            logging.warning(f"Invalid queue_length: {queue_length}")
+            queue_length = None
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO interviews (username, timestamp, event_type, queue_length, channel)
                 VALUES (?, ?, ?, ?, ?)
-            ''', (username, datetime.now().isoformat(), 'started', queue_length, channel))
+            ''', (username[:100], datetime.now().isoformat(), 'started', queue_length, channel[:100] if channel else None))
 
             logging.debug(f"Recorded interview start for {username}")
 
     def record_interview_outcome(self, username, outcome, message=None, channel=None):
         """Record interview outcome (passed, failed, missed)"""
+        # Validate inputs
+        if not username or not isinstance(username, str):
+            logging.warning(f"Invalid username: {username}")
+            return
+
+        if outcome not in ['passed', 'failed', 'missed']:
+            logging.warning(f"Invalid outcome: {outcome}")
+            return
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO interviews (username, timestamp, event_type, channel, outcome_message)
                 VALUES (?, ?, ?, ?, ?)
-            ''', (username, datetime.now().isoformat(), outcome, channel, message))
+            ''', (username[:100], datetime.now().isoformat(), outcome, channel[:100] if channel else None, message[:500] if message else None))
 
             logging.debug(f"Recorded interview outcome for {username}: {outcome}")
 
     def record_queue_snapshot(self, queue_length, channel=None):
         """Record current queue length"""
+        # Validate input
+        if not isinstance(queue_length, int) or queue_length < 0:
+            logging.warning(f"Invalid queue_length for snapshot: {queue_length}")
+            return
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO queue_snapshots (timestamp, queue_length, channel)
                 VALUES (?, ?, ?)
-            ''', (datetime.now().isoformat(), queue_length, channel))
+            ''', (datetime.now().isoformat(), queue_length, channel[:100] if channel else None))
 
     def get_statistics(self, days=30, channel=None):
         """Get interview statistics for the past N days"""
@@ -241,8 +272,11 @@ class InterviewDatabase:
             cursor = conn.cursor()
 
             cursor.execute('DELETE FROM interviews WHERE timestamp < ?', (cutoff_date,))
-            cursor.execute('DELETE FROM queue_snapshots WHERE timestamp < ?', (cutoff_date,))
+            deleted_interviews = cursor.rowcount
 
-            deleted = cursor.rowcount
-            logging.info(f"Cleared {deleted} old database records")
-            return deleted
+            cursor.execute('DELETE FROM queue_snapshots WHERE timestamp < ?', (cutoff_date,))
+            deleted_snapshots = cursor.rowcount
+
+            total_deleted = deleted_interviews + deleted_snapshots
+            logging.info(f"Cleared {total_deleted} old database records ({deleted_interviews} interviews, {deleted_snapshots} snapshots)")
+            return total_deleted
