@@ -8,6 +8,13 @@ from file_read_backwards import FileReadBackwards
 from hashlib import sha256
 from urllib.parse import urljoin
 
+try:
+    from interview_database import InterviewDatabase
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+    logging.warning("Interview database module not available - analytics disabled")
+
 VERSION = '1.4.0'
 default_server = 'https://ntfy.sh/'
 
@@ -15,6 +22,7 @@ default_server = 'https://ntfy.sh/'
 notification_lock = threading.Lock()
 recent_notifications = {}  # {notification_type: timestamp}
 notification_log_file = None
+db = None  # Global database instance
 
 parser = argparse.ArgumentParser(prog='interview_notify.py',
   description='IRC Interview Notifier v{}\nhttps://github.com/ftc2/interview-notify'.format(VERSION),
@@ -35,6 +43,8 @@ parser.add_argument('--bot-nicks', metavar='NICKS', default='Gatekeeper', help='
 parser.add_argument('--mode', choices=['red', 'ops'], default='red', help='interview mode (affects triggers) – default: red')
 parser.add_argument('--notification-log', dest='notif_log', type=Path, help='path to file for logging all notifications (optional)')
 parser.add_argument('--rate-limit', dest='rate_limit', type=int, default=60, help='seconds to wait before sending duplicate notifications – default: 60')
+parser.add_argument('--enable-analytics', dest='enable_analytics', action='store_true', help='enable interview statistics tracking and analysis')
+parser.add_argument('--analytics-db', dest='analytics_db', type=Path, help='path to analytics database file (optional, defaults to ~/.interview-notify-history.db)')
 parser.add_argument('-v', action='count', default=5, dest='verbose', help='verbose (invoke multiple times for more verbosity)')
 parser.add_argument('--version', action='version', version='{} v{}'.format(parser.prog, VERSION))
 
@@ -73,8 +83,29 @@ def spawn_parser(log_path):
 def log_parse(log_path, parser_stop):
   """Parse log file and notify on triggers (parser thread)"""
   logging.info('parser: using "{}"'.format(log_path.name))
+  channel = log_path.parent.name  # Use parent directory as channel identifier
+
   for line in tail(log_path, parser_stop):
     logging.debug(line)
+
+    # Check for analytics events first (before notifications)
+    if db and args.enable_analytics:
+      # Check for interview start
+      interview_start = parse_interview_start(line)
+      if interview_start:
+        username, queue_length = interview_start
+        db.record_interview_start(username, queue_length, channel)
+        db.record_queue_snapshot(queue_length, channel)
+        logging.debug(f'Analytics: Recorded interview start for {username}, queue: {queue_length}')
+
+      # Check for interview outcome
+      outcome_data = parse_interview_outcome(line)
+      if outcome_data:
+        username, outcome, message = outcome_data
+        db.record_interview_outcome(username, outcome, message, channel)
+        logging.debug(f'Analytics: Recorded {outcome} outcome for {username}')
+
+    # Now check for notifications
     if check_trigger(line, 'Currently interviewing: {}'.format(args.nick)):
       logging.info('YOUR INTERVIEW IS HAPPENING ❗')
       notify(line, title='Your interview is happening❗', tags='rotating_light', priority=5, notification_type='your_interview')
@@ -140,6 +171,36 @@ def check_netsplit(line):
   if 'Ping timeout: 121 seconds' in line:
     return True
   return False
+
+def parse_interview_start(line):
+  """Parse interview start message and return (username, queue_length) or None"""
+  # Pattern: <Gatekeeper> Currently interviewing: USERNAME ::: #red-interview-01 ::: 59 remaining in queue.
+  match = re.search(r'Currently interviewing:\s+(\S+)\s+:::.+?:::\s+(\d+)\s+remaining in queue', line)
+  if match:
+    username = match.group(1)
+    queue_length = int(match.group(2))
+    return (username, queue_length)
+  return None
+
+def parse_interview_outcome(line):
+  """Parse interview outcome (kick message) and return (username, outcome, message) or None"""
+  # Check if it's a kick message from Gatekeeper
+  kick_match = re.search(r'Gatekeeper kicked\s+(\S+)\s+from the channel\s+\((.+?)\)', line)
+  if not kick_match:
+    return None
+
+  username = kick_match.group(1)
+  message = kick_match.group(2)
+
+  # Determine outcome based on message content
+  if 'Congratulations! Welcome to' in message:
+    return (username, 'passed', message)
+  elif 'You have not passed the interview' in message:
+    return (username, 'failed', message)
+  elif 'You missed your interview' in message:
+    return (username, 'missed', message)
+
+  return None
 
 def remove_html_tags(text):
   """Remove html tags from a string"""
@@ -235,6 +296,16 @@ args = parser.parse_args()
 
 args.verbose = 70 - (10*args.verbose) if args.verbose > 0 else 0
 logging.basicConfig(level=args.verbose, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+# Initialize analytics database if enabled
+if args.enable_analytics:
+  if not DATABASE_AVAILABLE:
+    logging.error('Analytics enabled but interview_database module not available')
+    crit_quit('Cannot enable analytics without interview_database.py module')
+  db = InterviewDatabase(args.analytics_db)
+  logging.info(f'Analytics enabled, database: {db.db_path}')
+else:
+  logging.debug('Analytics disabled')
 
 if args.mode != 'red':
   crit_quit('"{}" mode not implemented'.format(args.mode))

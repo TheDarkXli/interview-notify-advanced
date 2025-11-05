@@ -2,6 +2,7 @@
 
 # interview-notify config files
 .interview-notify-config.json
+.interview-notify-history.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

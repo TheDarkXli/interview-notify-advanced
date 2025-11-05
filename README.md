@@ -17,6 +17,7 @@ it sends push notifications when:
 
 **new in v1.4.0:**
 - **GUI application** – optional graphical interface for easy configuration (use `python3 interview_notify_gui.py`)
+- **interview analytics** – track interview statistics, success rates, queue lengths, and trends (enable with `--enable-analytics`)
 - **rate limiting** – prevents notification spam during mass events like netsplits (configurable with `--rate-limit`)
 - **notification history** – logs all notifications to a file for review (enable with `--notification-log`)
 - **multi-channel support** – watch multiple IRC channels simultaneously (specify `--log-dir` multiple times)
@@ -136,6 +137,55 @@ interview_notify.py --topic your_topic \
   --log-dir /path/to/ops/logs \
   --nick your_nick
 ```
+
+### interview analytics
+
+track interview statistics and analyze patterns:
+
+```bash
+# enable analytics tracking
+interview_notify.py --topic your_topic --log-dir /path/to/logs --nick your_nick \
+  --enable-analytics
+```
+
+the script will automatically track:
+- interview starts and queue lengths
+- interview outcomes (passed/failed/missed)
+- busiest hours for interviews
+- success rates and trends
+
+**view your statistics:**
+
+```bash
+# view stats for the last 30 days
+python3 view_stats.py
+
+# view stats for the last 7 days
+python3 view_stats.py --days 7
+
+# view stats for a specific channel
+python3 view_stats.py --channel "red-invites"
+```
+
+**example output:**
+```
+======================================================================
+Interview Statistics (Last 30 days)
+======================================================================
+
+📊 Total Interviews:     145
+✅ Passed:               87 (60.0%)
+❌ Failed:               42
+⏰ Missed:               16
+📈 Average Queue Length: 45.3
+
+🕐 Busiest Hours (most interviews):
+   18:00 - 23 interviews
+   19:00 - 21 interviews
+   20:00 - 19 interviews
+```
+
+database is stored at `~/.interview-notify-history.db` by default. old data (>90 days) is automatically cleaned up.
 
 ### notification history
 
